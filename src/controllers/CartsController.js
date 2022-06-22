@@ -64,7 +64,6 @@ class CartsController{
     try{
 
       const { id } = req.params;
-      const {code, price} = req.body;
 
       const cart = await Cart.findById(id);
 

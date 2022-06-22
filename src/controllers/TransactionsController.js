@@ -1,7 +1,9 @@
 import * as Yup from 'yup';
 import parsePhoneNumber from 'libphonenumber-js'
 import {cpf, cnpj} from 'cpf-cnpj-validator'
-import Transaction from "../models/Transaction";
+
+import Cart from "../models/Cart";
+import TransactionService from '../services/TransactionService';
 
 class TransactionsController{
   async create(req, res){
@@ -34,24 +36,77 @@ class TransactionsController{
         (paymentType, schema) => paymentType === "credit_card" ? schema.max(12) : schema.max(1)),
         customerName: Yup.string().required().min(3),
         customerEmail: Yup.string().required().email(),
+
         customerMobile: Yup.string()
           .required()
           .test("is-valid-mobile", "${path} is not a mobile number", (value) => 
             parsePhoneNumber(value, "BR").isValid()
           ),
-
         customerDocument: Yup.string().required().test('is-valid-document', '${path} is not a valid CPF / CNPJ',
         (value) => cpf.isValid(value) || cnpj.isValid(value) ),
+
+        billingAddress: Yup.string().required(),
+        billingNumber: Yup.string().required(),
+        billingNeighborhood: Yup.string().required(),
+        billingCity: Yup.string().required(),
+        billingState: Yup.string().required(),
+        billingZipCode: Yup.string().required(),
+
+        creditCardNumber: Yup.string().when("paymentType", 
+        (paymentType, schema) => paymentType === "credit_card" ? schema.required() : schema),
+
+        creditCardExpiration: Yup.string().when("paymentType", 
+        (paymentType, schema) => paymentType === "credit_card" ? schema.required() : schema),
+
+        creditCardHolderName: Yup.string().when("paymentType", 
+        (paymentType, schema) => paymentType === "credit_card" ? schema.required() : schema),
+
+        creditCardCvv: Yup.string().when("paymentType", 
+        (paymentType, schema) => paymentType === "credit_card" ? schema.required() : schema)
 
       })
 
       if(!(await schema.isValid(req.body))){
         return res.status(400).json({
           error: 'Error on validate schema.'
-        })
+        });
       }
 
-      return res.status(200).json()
+      const cart = await Cart.findOne({code: cartCode});
+
+      if(!cart){
+        return res.status(404).json();
+      }
+
+      const service = new TransactionService();
+      const response = await service.process({
+        cartCode,
+        paymentType,
+        installments,
+        customer:{
+          name: customerName,
+          email: customerEmail,
+          mobile: customerMobile,
+          document: customerDocument,
+        },
+        billing: {
+          address: billingAddress,
+          number: billingNumber,
+          neighborhood: billingNeighborhood,
+          city: billingCity,
+          state: billingState,
+          zipcode: billingZipCode
+        },
+        creditCard: {
+          number: creditCardNumber,
+          expiration: creditCardExpiration,
+          holdername: creditCardHolderName,
+          cvv: creditCardCvv
+        }
+      });
+
+
+      return res.status(200).json(response)
     }catch(err){
       console.error(err);
       return res.status(500).json({ error: 'Internal server error.' });
