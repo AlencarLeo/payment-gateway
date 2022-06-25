@@ -2,7 +2,15 @@ import {v4 as uuidv4} from 'uuid';
 import Cart from "../models/Cart";
 import Transaction from "../models/Transaction";
 
+import PagarMeProvider from '../provider/PagarMeProvider';
+
 class TransactionService{
+  paymentProvider;
+
+  constructor(paymentProvider){
+    this.paymentProvider = paymentProvider || new PagarMeProvider();
+  }
+
   async process({
     cartCode,
     paymentType,
@@ -33,10 +41,26 @@ class TransactionService{
       billingNeighborhood: billing.neighborhood,
       billingCity: billing.city,
       billingState: billing.state,
-      billingZipCode: billing.zipecode,
+      billingZipCode: billing.zipcode,
     })
 
-    return transaction;
+    const response = this.paymentProvider.process({
+      transactionCode: transaction.code,
+      total: transaction.total,
+      paymentType,
+      installments,
+      customer,
+      billing,
+      creditCard
+    })
+
+    transaction.updateOne({
+      transactionId: response.transactionId,
+      status: response.status,
+      processorResponse: response.processorResponse
+    });
+
+    return response;
   }
 }
 
